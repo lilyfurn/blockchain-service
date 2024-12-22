@@ -3,7 +3,7 @@ const EC = require('elliptic').ec;
 const ec = new EC('secp256k1');
 
 class Transaction {
-  constructor(fromAddress, toAddress, amount) {
+  constructor(fromAddress, toAddress, amount, type = ) {
     this.fromAddress = fromAddress;
     this.toAddress = toAddress;
     this.amount = amount;
@@ -11,6 +11,7 @@ class Transaction {
   calculateHash() {
     return SHA256(this.fromAddress + this.toAddress + this.amount).toString();
   }
+
   signTransaction(signingKey) {
     if (signingKey.getPublic("hex") !== this.fromAddress) {
       throw new Error("You cannot sign transactions for other wallets!");
@@ -45,10 +46,9 @@ class Block {
 
   calculateHash() {
     return SHA256(
-      this.index +
-        this.previousHash +
+      this.previousHash +
         this.timestamp +
-        JSON.stringify(this.data) +
+        JSON.stringify(this.transactions) +
         this.nonce
     ).toString();
   }
@@ -80,25 +80,26 @@ class Blockchain {
     this.chain = [this.createGenesisBlock()];
     this.difficulty = 2;
     this.pendingTransactions = [];
-    this.miningReward = 1;
+    this.miningReward = 100;
   }
 
   createGenesisBlock() {
-    return new Block(0, "01/01/2027", "Genesis block", "0");
+    return new Block("01/01/2027", [], "0");
   }
   getLatestBlock() {
     return this.chain[this.chain.length - 1];
   }
   minePendingTransactions(miningRewardAddress) {
-    let block = new Block(Date.now(), this.pendingTransactions);
+    const rewardTx = new Transaction(null, miningRewardAddress, this.miningReward);
+    this.pendingTransactions.push(rewardTx);
+
+    const block = new Block(Date.now(), this.pendingTransactions, this.getLatestBlock().hash);
     block.mineBlock(this.difficulty);
 
-    console.log("Block succefully mined");
+    console.log("Block successfully mined");
     this.chain.push(block);
 
-    this.pendingTransactions = [
-      new Transaction(null, miningRewardAddress, this.miningReward),
-    ];
+    this.pendingTransactions = [];
   }
 
   addTransaction(transaction) {
@@ -131,11 +132,6 @@ class Blockchain {
     return balance;
   }
 
-  //   addBlock(newBlock) {
-  //     newBlock.previousHash = this.getLatestBlock().hash;
-  //     newBlock.mineBlock(this.difficulty);
-  //     this.chain.push(newBlock);
-  //   }
   isChainValid() {
     for (let i = 1; i < this.chain.length; i++) {
       const currentBlock = this.chain[i];
