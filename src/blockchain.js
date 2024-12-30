@@ -1,7 +1,7 @@
 const SHA256 = require("crypto-js/sha256");
 const EC = require('elliptic').ec;
 const ec = new EC('secp256k1');
-
+const { SYSTEM_ADDRESS, MINING_REWARD } = require("./constants")
 const serializeAttributes = (attributes) => {
   return JSON.stringify(
     Object.keys(attributes)
@@ -102,11 +102,13 @@ class Block {
 }
 
 class Blockchain {
-  constructor() {
+  constructor(miningRewardAddress) {
     this.chain = [this.createGenesisBlock()];
     this.difficulty = 0;
     this.pendingTransactions = [];
     this.miningReward = 100;
+    this.miningRewardAddress = miningRewardAddress;
+    this.systemAddress = "SYSTEM_FAUCET_1111111111";
   }
 
   createGenesisBlock() {
@@ -120,6 +122,10 @@ class Blockchain {
   minePendingTransactions(miningRewardAddress) {
     console.log("Mining transactions...");
     console.log("Pending transactions before mining:", this.pendingTransactions);
+
+    if (!this.miningRewardAddress) {
+      throw new Error("Mining reward address is not defined.");
+    }
   
     const block = new Block(Date.now(), this.pendingTransactions, this.getLatestBlock().hash);
     block.mineBlock(this.difficulty);
@@ -128,7 +134,7 @@ class Blockchain {
   
     this.chain.push(block);
     this.pendingTransactions = [
-      new Transaction(null, miningRewardAddress, this.miningReward),
+      new Transaction(SYSTEM_ADDRESS, miningRewardAddress, this.miningReward),
     ];
   
     console.log("Pending transactions after mining:", this.pendingTransactions);
@@ -136,7 +142,7 @@ class Blockchain {
   addTransaction(transaction) {
     console.log("Adding transaction:", transaction);
   
-    if (transaction.fromAddress === null && transaction.toAddress) {
+    if (transaction.fromAddress === SYSTEM_ADDRESS && transaction.toAddress) {
       // Allow system-generated transactions with a null fromAddress
     } else {
       if (!transaction.fromAddress || !transaction.toAddress) {
@@ -157,6 +163,10 @@ class Blockchain {
     console.log("Transaction added to pending transactions:", transaction);
   }
   
+  getPendingTransactions() {
+    console.log("Returning pending transactions:", this.pendingTransactions);
+    return this.pendingTransactions;
+  }
 
   getBalanceOfAddress(address) {
     let balance = 0;
@@ -177,8 +187,27 @@ class Blockchain {
     console.log(`Final balance for ${address}: ${balance}`);
     return balance;
   }
-  
-  
+
+  createCoins(recipientAddress, amount) {
+    if (!recipientAddress) {
+      throw new Error("Recipient address is required for coin creation.");
+    }
+    if (amount <= 0) {
+      throw new Error("Amount must be greater than 0.");
+    }
+
+    const coinTransaction = new Transaction(
+      this.systemAddress, // From the system faucet
+      recipientAddress,
+      amount,
+      "coin",
+      { note: "Faucet coin creation" },
+      true // Executable immediately
+    );
+
+    this.pendingTransactions.push(coinTransaction);
+    console.log("Coin creation transaction added:", coinTransaction);
+  }
 
   isChainValid() {
     console.log("Validating blockchain");
