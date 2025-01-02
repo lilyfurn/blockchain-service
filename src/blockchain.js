@@ -1,5 +1,6 @@
 const Block = require("./block");
 const Transaction = require("./transaction");
+const NodeProgram = require("./nodeProgram");
 const {
   SYSTEM_ADDRESS,
   SYSTEM_FAUCET_ADDRESS,
@@ -13,8 +14,9 @@ class Blockchain {
     this.difficulty = 2; // Mining difficulty
     this.miningReward = MINING_REWARD;
     this.miningRewardAddress = miningRewardAddress;
-    this.tokens = {}; // Holds metadata for tokens
+    this.tokens = {}; // Metadata for tokens
     this.tokenBalances = {}; // Maps token ID to address balances
+    this.nodePrograms = {}; // Node Programs on this blockchain
   }
 
   createGenesisBlock() {
@@ -34,7 +36,7 @@ class Blockchain {
     block.mine(this.difficulty);
     this.chain.push(block);
 
-    // Reward miner with mining reward
+    // Reward miner
     this.pendingTransactions = [
       new Transaction(
         SYSTEM_ADDRESS,
@@ -46,50 +48,21 @@ class Blockchain {
   }
 
   addTransaction(transaction) {
-    // Handle token transfer validation
-    if (transaction.type === "transfer_token") {
-      const senderBalance = this.getTokenBalance(transaction.fromAddress, transaction.attributes.tokenID);
-  
-      if (senderBalance < transaction.amount) {
-        throw new Error("Insufficient token balance for this transfer.");
-      }
+    this.validateTransaction(transaction);
+
+    // Process special transactions (e.g., node program creation)
+    if (transaction.type === "node_program") {
+      this.createNodeProgram(transaction);
     }
-  
-    // Handle token fork validation
-    if (transaction.type === "fork_token") {
-      const senderBalance = this.getTokenBalance(transaction.fromAddress, transaction.attributes.originalTokenID);
-  
-      // Ensure sender has sufficient balance of the original token
-      if (senderBalance <= 0) {
-        throw new Error("Insufficient balance of the original token to fork.");
-      }
-  
-      // Ensure the new token ID does not already exist
-      for (const block of this.chain) {
-        for (const trans of block.transactions) {
-          if (
-            trans.type === "generate_token" &&
-            trans.attributes.tokenID === transaction.attributes.newTokenID
-          ) {
-            throw new Error("The new token ID already exists.");
-          }
-        }
-      }
-    }
-  
-    // General transaction validation
-    if (!transaction.isValid()) {
-      throw new Error("Cannot add invalid transaction to chain");
-    }
-  
-    // Add transaction to pending transactions
+
     this.pendingTransactions.push(transaction);
   }
-  
-  
 
-  // Validation for different types of transactions
   validateTransaction(transaction) {
+    if (transaction.type === "faucet") {
+      // Skip signature validation for faucet transactions
+      return;
+    }
     switch (transaction.type) {
       case "transfer":
         this.validateTransfer(transaction);
@@ -103,8 +76,15 @@ class Blockchain {
       case "transfer_token":
         this.validateTransferToken(transaction);
         break;
+      case "node_program":
+        this.validateNodeProgram(transaction);
+        break;
       default:
         throw new Error(`Unknown transaction type: ${transaction.type}`);
+    }
+
+    if (!transaction.isValid()) {
+      throw new Error("Cannot add invalid transaction to chain");
     }
   }
 
@@ -113,14 +93,10 @@ class Blockchain {
     if (senderBalance < transaction.amount) {
       throw new Error("Insufficient balance for transfer.");
     }
-    if (!transaction.signature) {
-      throw new Error("Transaction must be signed.");
-    }
   }
 
   validateFaucet(transaction) {
     if (transaction.amount > 100) {
-      // Assuming 100 is the max faucet amount
       throw new Error("Requested faucet amount exceeds limit.");
     }
   }
@@ -143,6 +119,13 @@ class Blockchain {
     }
   }
 
+  validateNodeProgram(transaction) {
+    const { name } = transaction.attributes;
+    if (this.nodePrograms[name]) {
+      throw new Error(`Node Program '${name}' already exists.`);
+    }
+  }
+
   processTokenTransaction(transaction) {
     const { type } = transaction;
     if (type === "generate_token") {
@@ -156,7 +139,6 @@ class Blockchain {
     }
   }
 
-  // Update token balances after a transaction
   updateTokenBalances(transaction) {
     const { tokenID } = transaction.attributes;
     const { fromAddress, toAddress, amount } = transaction;
@@ -190,20 +172,14 @@ class Blockchain {
 
     for (const block of this.chain) {
       for (const trans of block.transactions) {
-        // Check for transactions involving the specific tokenID
         if (
           trans.type === "transfer_token" &&
           trans.attributes.tokenID === tokenID
         ) {
-          if (trans.fromAddress === address) {
-            balance -= trans.amount;
-          }
-          if (trans.toAddress === address) {
-            balance += trans.amount;
-          }
+          if (trans.fromAddress === address) balance -= trans.amount;
+          if (trans.toAddress === address) balance += trans.amount;
         }
 
-        // Add initial supply if the token was generated
         if (trans.type === "generate_token" && trans.toAddress === address) {
           if (trans.attributes.tokenID === tokenID) {
             balance += trans.attributes.initialSupply;
@@ -213,6 +189,52 @@ class Blockchain {
     }
 
     return balance;
+  }
+
+  createNodeProgram(transaction) {
+    console.log("Node Program Running...");
+    console.log("Transaction Object Received:", transaction);
+    console.log("Transaction Object Received:", transaction.name);
+
+    // Ensure the transaction contains valid data
+    if (
+      typeof transaction !== "object" ||
+      Array.isArray(transaction) ||
+      !transaction
+    ) {
+      throw new Error("Invalid transaction format received.");
+    }
+
+    // Validate required attributes
+    const { name, maxTokens, creatorAddress, ...additionalAttributes } =
+      transaction;
+
+    if (!name || typeof name !== "string") {
+      throw new Error("Missing required attribute: 'name'.");
+    }
+
+    if (typeof maxTokens !== "number" || maxTokens <= 0) {
+      throw new Error(
+        "Missing or invalid 'maxTokens'. It must be a positive number."
+      );
+    }
+
+    if (this.nodePrograms[transaction.name]) {
+      throw new Error(`Node Program '${name}' already exists.`);
+    }
+
+    // Pass the full transaction object to the NodeProgram constructor
+    const nodeProgram = new NodeProgram(
+      transaction.name,
+      transaction.creatorAddress, // Creator address
+      transaction.maxTokens,
+      additionalAttributes // Include any additional attributes
+    );
+
+    // Register the Node Program
+    this.nodePrograms[name] = nodeProgram;
+
+    console.log(`Node Program '${name}' created successfully.`);
   }
 
   isChainValid() {
