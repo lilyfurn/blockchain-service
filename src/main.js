@@ -7,7 +7,7 @@ const myKey = ec.keyFromPrivate(
 );
 const myWalletAddress = myKey.getPublic("hex");
 
-let demoCoin = new Blockchain();
+let demoCoin = new Blockchain(); 
 
 const tx1 = new Transaction(myWalletAddress, "public key goes here", 10);
 tx1.signTransaction(myKey);
