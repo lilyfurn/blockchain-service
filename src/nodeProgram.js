@@ -3,7 +3,7 @@ const Transaction = require("./transaction");
 const Token = require("./token");
 
 class NodeProgram {
-  constructor(name, creatorAddress, maxTokens, attributes = {}) {
+  constructor(name, creatorAddress, maxTokens, attributes = {}, genesisBlock) {
     // Validate required parameters
     if (!name) {
       throw new Error(
@@ -16,10 +16,10 @@ class NodeProgram {
     // }
 
     this.name = name; // Unique Node Program name
-    this.creator = creatorAddress; // Address of the creator
+    this.creatorAddress = creatorAddress; // Address of the creator
     this.maxTokens = maxTokens; // Maximum number of tokens for this program
     this.attributes = attributes; // Custom attributes for the Node Program
-    this.genesisBlock = this.createGenesisBlock(); // Genesis block for the Node Program
+    this.genesisBlock = genesisBlock; // Genesis block for the Node Program
     this.ledger = [this.genesisBlock]; // Independent ledger
     this.pendingTransactions = []; // Pending transactions
     this.tokens = {}; // Tokens managed by this Node Program
@@ -29,9 +29,9 @@ class NodeProgram {
   }
 
   // Create the genesis block
-  createGenesisBlock() {
-    return new Block(Date.now(), [], "0");
-  }
+  // createGenesisBlock() {
+  //   return new Block(Date.now(), [], "0");
+  // }
 
   // Add a transaction to the Node Program
   addTransaction(transaction) {
@@ -138,6 +138,7 @@ class NodeProgram {
       attributes: this.attributes,
       genesisHash: this.genesisBlock.hash,
       totalTokens: Object.keys(this.tokens).length,
+      
     };
   }
 }

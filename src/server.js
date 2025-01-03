@@ -150,155 +150,52 @@ app.get("/token-balance/:address/:tokenID", (req, res) => {
 app.post("/create-node-program", (req, res) => {
   const {
     fromAddress,
-    toAddress = null, // Default to null if not provided
-    amount = 0, // Default to 0 if not provided
-    type,
-    attributes = {}, // Default to an empty object if not provided
-    executable = false, // Default to false if not provided
-    timestamp,
-    signature,
+    attributes = {}, // Default to empty object
   } = req.body;
 
   try {
-    console.log("Received transaction payload in backend:", req.body);
-    console.log("Attributes received in backend:", attributes);
+    console.log("Received transaction payload:", req.body);
 
-    // Validate transaction type
-    if (type !== "node_program") {
-      throw new Error("Invalid transaction type for Node Program creation.");
-    }
-
-    // Ensure `attributes` is a valid object
-    if (typeof attributes !== "object" || Array.isArray(attributes)) {
-      throw new Error("Invalid attributes field. It must be an object.");
-    }
-
-    // Extract required attributes
-    //   const { name, maxTokens, ...additionalAttributes } = attributes;
-
+    // Validate required attributes
     const { name, maxTokens, ...additionalAttributes } = attributes;
-    console.log("Parsed attributes:", {
-      name,
-      maxTokens,
-      additionalAttributes,
-    });
-
     if (!name || typeof maxTokens !== "number") {
       throw new Error("Missing required attributes: 'name' or 'maxTokens'.");
     }
 
-    // Create transaction with validated attributes
-    const transaction = new Transaction(
-      fromAddress,
-      toAddress,
-      amount,
-      type,
-      // { name, maxTokens, ...additionalAttributes },
-      attributes,
-      executable
-    );
-    transaction.timestamp = timestamp;
-    transaction.signature = signature;
-
-    console.log("Recreated transaction object:", transaction);
-
-    console.log("Recreated transaction hash:", transaction.calculateHash());
-    console.log("Recreated transaction signature:", transaction.signature);
-
-    // Verify the signature
-    if (!transaction.isValid()) {
-      console.error("Transaction validation failed.");
-      throw new Error("Transaction signature verification failed.");
-    }
-
-    console.log(`"Transaction validation passed." ${attributes.name}`);
-
-    // Check if the Node Program already exists
-    if (nodePrograms[attributes.name]) {
-      throw new Error(`Node Program '${attributes.name}' already exists.`);
-    }
-
-    console.log("Attributes received in backend:", attributes);
-    console.log("Attributes name:", attributes.name);
-    console.log(
-      "Attributes received in backend:",
-      attributes.maxTokens,
-      attributes
-    );
-
+    // Prepare attributes
     const programAttributes = {
-        ...attributes,
-        creatorAddress: fromAddress,
-      };
+      name,
+      maxTokens,
+      creatorAddress: fromAddress,
+      ...additionalAttributes,
+    };
 
-    // Create the Node Program on the blockchain
-    const genesisHash = demoCoin.createNodeProgram(programAttributes);
+    // Create the genesis block via the blockchain
+    const genesisBlock = demoCoin.createNodeProgram(programAttributes);
+    if (!genesisBlock) {
+      throw new Error("Failed to create genesis block.");
+    }
+    console.log("Genesis block created:", genesisBlock);
 
-    console.log("Genesis hash sent to blockchain:", genesisHash);
+    // Register Node Program with the genesis block
+    nodePrograms[name] = new NodeProgram(
+      name,
+      fromAddress,
+      maxTokens,
+      additionalAttributes,
+      genesisBlock
+    );
 
-    nodePrograms[attributes.name] = new NodeProgram({
-        name: attributes.name,
-        creatorAddress: fromAddress,
-        maxTokens: attributes.maxTokens,
-        attributes: additionalAttributes,
-      });
-
-    console.log("Genesis hash for Node Program:", attributes.name);
-
-    res
-      .status(200)
-      .json({ message: "Node Program created successfully!", genesisHash });
+    res.status(200).json({
+      message: "Node Program created successfully!",
+      genesisHash: genesisBlock.hash,
+    });
   } catch (error) {
     console.error("Error creating Node Program:", error.message);
-    console.error("Stack trace:", error.stack);
     res.status(400).json({ error: error.message });
   }
 });
 
-//   app.post("/node-program", (req, res) => {
-//     const { fromAddress, toAddress, amount, type, attributes, executable, timestamp, signature } = req.body;
-
-//     try {
-//         console.log("Received transaction:", req.body);
-
-//         // Validate `attributes` is an object
-//         if (!attributes || typeof attributes !== "object") {
-//             throw new Error("Invalid or missing attributes in the transaction.");
-//         }
-
-//         // Validate `maxTokens` is a number
-//         if (typeof attributes.maxTokens !== "number" || isNaN(attributes.maxTokens)) {
-//             throw new Error("Invalid maxTokens value in attributes.");
-//         }
-
-//         // Recreate the transaction and verify signature
-//         const transaction = new Transaction(fromAddress, toAddress, amount, type, attributes, executable);
-//         transaction.timestamp = timestamp;
-//         transaction.signature = signature;
-
-//         if (!transaction.isValid()) {
-//             throw new Error("Transaction signature verification failed.");
-//         }
-
-//         console.log("Transaction validation passed.");
-
-//         // Check for duplicate Node Program
-//         if (nodePrograms[attributes.name]) {
-//             throw new Error(`Node Program '${attributes.name}' already exists.`);
-//         }
-
-//         // Create Node Program
-//         const genesisHash = demoCoin.createNodeProgram(attributes.name, fromAddress, attributes.maxTokens, attributes);
-//         console.log("Genesis hash for Node Program:", genesisHash);
-
-//         nodePrograms[attributes.name] = new NodeProgram(attributes.name, fromAddress, attributes.maxTokens, genesisHash);
-
-//         res.status(200).json({ message: "Node Program created successfully!", genesisHash });
-//     } catch (error) {
-//         console.error("Error creating Node Program:", error.message);
-//         res.status(400).json({ error: error.message });
-//     }
-// });
 
 app.get("/node-programs", (req, res) => {
   try {
@@ -328,14 +225,17 @@ app.get("/node-program/:genesisHash/ledger", (req, res) => {
     const { genesisHash } = req.params;
   
     try {
+      console.log("nodePrograms:", nodePrograms);
+    console.log("Requested Genesis Hash:", genesisHash);
       const program = Object.values(nodePrograms).find(
         (program) => program.genesisBlock.hash === genesisHash
       );
       if (!program) {
         throw new Error("Node Program not found.");
       }
-      res.json(program.ledger);
+      res.json(program);
     } catch (error) {
+      console.error("Error in /node-program/:genesisHash/ledger:", error.message);
       res.status(400).json({ error: error.message });
     }
   });

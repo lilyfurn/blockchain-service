@@ -194,7 +194,6 @@ class Blockchain {
   createNodeProgram(transaction) {
     console.log("Node Program Running...");
     console.log("Transaction Object Received:", transaction);
-    console.log("Transaction Object Received:", transaction.name);
 
     // Ensure the transaction contains valid data
     if (
@@ -219,22 +218,27 @@ class Blockchain {
       );
     }
 
-    if (this.nodePrograms[transaction.name]) {
+    if (this.nodePrograms[name]) {
       throw new Error(`Node Program '${name}' already exists.`);
     }
 
-    // Pass the full transaction object to the NodeProgram constructor
-    const nodeProgram = new NodeProgram(
-      transaction.name,
-      transaction.creatorAddress, // Creator address
-      transaction.maxTokens,
-      additionalAttributes // Include any additional attributes
-    );
+    // Create the genesis block
+    const genesisBlock = new Block(Date.now(), [], "0");
+    this.chain.push(genesisBlock); // Add to blockchain ledger
+    console.log(`Genesis block for '${name}':`, genesisBlock);
 
-    // Register the Node Program
-    this.nodePrograms[name] = nodeProgram;
+    // Register the Node Program using the genesis block
+    this.nodePrograms[name] = {
+      name,
+      maxTokens,
+      creatorAddress,
+      attributes: additionalAttributes,
+      genesisBlock, // Store the genesis block reference
+      ledger: [genesisBlock], // Initialize ledger
+      pendingTransactions: [],
+    };
 
-    console.log(`Node Program '${name}' created successfully.`);
+    return genesisBlock; // Return the created block
   }
 
   isChainValid() {
